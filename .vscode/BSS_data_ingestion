@@ -1,89 +1,295 @@
+"""BSS data ingestion and party-by-ethnicity plotting utilities.
+
+This module provides:
+- `load_datasets()` to lazily load BSS .tab files from Data/...
+- `plot_party_distribution(df, year)` to return a matplotlib Figure
+
+The module is safe to import (does not run plotting unless executed as a script).
+"""
+from pathlib import Path
+import textwrap
 import pandas as pd
-import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import textwrap
-def wrap_labels(ax, width, break_long_words=False, rotation=0, ha='center'):
-    labels = []
-    for label in ax.get_xticklabels():
-        text = label.get_text()
-        labels.append(textwrap.fill(text, width=width,
-                      break_long_words=break_long_words))
-    ax.set_xticklabels(labels, rotation=rotation, ha=ha)
+from typing import Dict, Optional
 
-bss_19 = pd.read_table(r"Data\UKDA-8772-tab\tab\bsa19_for_ukda.tab")
-bss_20 = pd.read_table(r"Data\UKDA-9005-tab\tab\bsa2020_archive.tab")
-bss_21 = pd.read_table(r"Data\UKDA-9072-tab\tab\bsa21_archive.tab")
-bss_22 = pd.read_table(r"Data\UKDA-9283-tab\tab\p16974_bsa22_archive.tab")
-bss_23 = pd.read_table(r"Data\UKDA-9363-tab\tab\p18229-bsa23-archive.tab")
-bss_24 = pd.read_table(r"Data\UKDA-9478-tab\tab\p19056-bsa24-archive.tab")
-bss_25 = pd.read_table(r"Data\UKDA-9549-tab\tab\bsa_2025_survey_experiment.tab")
-
-PartyIDN_mapping = {
-	1: "Conservative",
-	2: "Labour",
-	3: "Liberal Democrat",
-	4: "Scottish National Party",
-	5: "Plaid Cymru",
-	6: "Green Party",
-	7: "UK Independence Party (UKIP)",
-	8: "British National Party (BNP)/ National Front",
-	9: "Trade Union and Socialist Coalition (TUSC)/ RESPECT/ Other socialist party",
-	10: "Brexit Party",
-	11: "Change UK - The Independent Group",
-	12: "Other party (WRITE IN)",
-	13: "Other answer (WRITE IN)",
-	14: "None",
-	20: "Refused to say",
-	98: "Don`t know",
-	99: "Refusal",
-	-2: "Skip, version off route",
-	-1: "Item not applicable"
+Ethnicity_mapping = {
+    1: "Black origin",
+    2: "Asian origin",
+    3: "White origin",
+    4: "Mixed origin",
+    5: "Other origin",
+    8: "Don't know",
+    9: "Refusal",
+    -1: "Not applicable",
 }
 
-def plot_party_distribution(df, year):
-    party_col = None
-    for col in df.columns:
-        if col.lower() in ['partyidn', 'partyfw']:
-            party_col = col
-            break
+# Year-specific party mappings (use year key to override the default mapping)
+PartyIDN_mapping_by_year = {
+    2024: {
+        -1.0: "Not applicable",
+        1.0: "Conservative",
+        2.0: "Labour",
+        3.0: "Liberal Democrat",
+        4.0: "Scottish National Party",
+        5.0: "Plaid Cymru",
+        6.0: "Green Party",
+        7.0: "UK Independence Party (UKIP)",
+        8.0: "Reform UK (previously known as Brexit party)",
+        9.0: "Democratic Unionist Party (DUP)",
+        10.0: "Sinn Féin",
+        11.0: "Social Democratic & Labour Party (SDLP)",
+        12.0: "Alliance Party",
+        13.0: "Ulster Unionist Party (UUP)",
+        14.0: "Traditional Unionist Voice (TUV)",
+        15.0: "None",
+        16.0: "ALBA",
+        98.0: "Don't know",
+        99.0: "Prefer not to answer",
+        906.0: "Other specific answer not in codeframe",
+        907.0: "None of the above",
+    }
+    ,
+    2023: {
+        -9.0: "Refused",
+        -8.0: "Don't know",
+        -1.0: "Not applicable",
+        1.0: "Conservative",
+        2.0: "Labour",
+        3.0: "Liberal Democrat",
+        4.0: "Scottish National Party",
+        5.0: "Plaid Cymru",
+        6.0: "Green Party",
+        7.0: "UK Independence Party (UKIP)",
+        8.0: "Reform UK (previously known as Brexit party)",
+        9.0: "ALBA",
+        10.0: "Other party (please say what)",
+        11.0: "None of the above",
+        98.0: "Don't know",
+        99.0: "Prefer not to answer",
+    },
+    2022: {
+        -1.0: "Not applicable",
+        1.0: "Conservative",
+        2.0: "Labour",
+        3.0: "Liberal Democrat",
+        4.0: "Scottish National Party",
+        5.0: "Plaid Cymru",
+        6.0: "Green Party",
+        7.0: "UK Independence Party (UKIP)",
+        8.0: "Reform UK (previously known as Brexit party)",
+        9.0: "Other",
+        10.0: "None",
+        98.0: "Don't know",
+        99.0: "Refused",
+        920.0: "Vague or irrelevant answer",
+        930.0: "Editor unable to code",
+    },
+    2020: {
+        1.0: "Conservative",
+        2.0: "Labour",
+        3.0: "Liberal Democrat",
+        4.0: "Scottish National Party",
+        5.0: "Plaid Cymru",
+        6.0: "Green Party",
+        7.0: "UK Independence Party (UKIP)",
+        8.0: "Brexit Party",
+        9.0: "Other",
+        10.0: "None",
+        98.0: "Don't know",
+        99.0: "Prefer not to answer",
+        -1.0: "Not applicable",
+    },
+    2019: {
+        1.0: "Conservative",
+        2.0: "Labour",
+        3.0: "Liberal Democrat",
+        4.0: "Scottish National Party",
+        5.0: "Plaid Cymru",
+        6.0: "Green Party",
+        7.0: "UK Independence Party (UKIP)",
+        8.0: "British National Party (BNP)/ National Front",
+        9.0: "Trade Union and Socialist Coalition (TUSC)/ RESPECT/ Other socialist party",
+        10.0: "Brexit Party",
+        11.0: "Change UK - The Independent Group",
+        12.0: "Other party (WRITE IN)",
+        13.0: "Other answer (WRITE IN)",
+        14.0: "None",
+        20.0: "Refused to say",
+        98.0: "Don`t know",
+        99.0: "Refusal",
+        -2.0: "Skip, version off route",
+        -1.0: "Item not applicable",
+    },
+    2021: {
+        1.0: "Conservative",
+        2.0: "Labour",
+        3.0: "Liberal Democrat",
+        4.0: "Scottish National Party",
+        5.0: "Plaid Cymru",
+        6.0: "Green Party",
+        7.0: "UK Independence Party (UKIP)",
+        8.0: "Reform UK (previously known as Brexit party)",
+        9.0: "Other party",
+        10.0: "None",
+        98.0: "Don't know",
+        99.0: "Prefer not to answer",
+        -11.0: "HideNA",
+        -1.0: "Not applicable",
+    }
+}
+
+
+def load_datasets() -> Dict[int, pd.DataFrame]:
+    """Load BSS datasets from the Data folder. Returns a dict year->DataFrame.
+
+    Only files that exist will be read.
+    """
+    files = {
+        2019: Path('Data/UKDA-8772-tab/tab/bsa19_for_ukda.tab'),
+        2020: Path('Data/UKDA-9005-tab/tab/bsa2020_archive.tab'),
+        2021: Path('Data/UKDA-9072-tab/tab/bsa21_archive.tab'),
+        2022: Path('Data/UKDA-9283-tab/tab/p16974_bsa22_archive.tab'),
+        2023: Path('Data/UKDA-9363-tab/tab/p18229-bsa23-archive.tab'),
+        2024: Path('Data/UKDA-9478-tab/tab/p19056-bsa24-archive.tab'),
+    }
+    datasets: Dict[int, pd.DataFrame] = {}
+    for year, p in files.items():
+        if p.exists():
+            datasets[year] = pd.read_table(p)
+    return datasets
+
+
+def find_column(df: pd.DataFrame, candidates) -> Optional[str]:
+    """Return the first matching column name from candidates (case-insensitive)."""
+    lookup = {col.lower(): col for col in df.columns}
+    for cand in candidates:
+        if cand.lower() in lookup:
+            return lookup[cand.lower()]
+    return None
+
+
+def _map_codes(series: pd.Series, mapping: dict) -> pd.Series:
+    """Map numeric and string-coded numeric keys in one step."""
+    # include int, float and string forms of mapping keys to match different storage formats
+    full = {}
+    for k, v in mapping.items():
+        full[k] = v
+        # try float and int variants
+        try:
+            f = float(k)
+            full[f] = v
+            if float(f).is_integer():
+                full[int(f)] = v
+                full[str(int(f))] = v
+            # also add string form of float (e.g. '2.0')
+            full[str(f)] = v
+        except Exception:
+            pass
+        # original string form
+        full[str(k)] = v
+    return series.map(full)
+
+
+def wrap_labels(ax: plt.Axes, labels, width: int = 20, rotation: int = 0, ha: str = 'center'):
+    """Wrap a list of labels and set them on the x-axis without triggering Matplotlib warnings.
+
+    Assumes categorical x positions 0..len(labels)-1.
+    """
+    wrapped = [textwrap.fill(str(l), width=width, break_long_words=False) for l in labels]
+    ax.set_xticks(list(range(len(wrapped))))
+    ax.set_xticklabels(wrapped, rotation=rotation, ha=ha)
+
+
+def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]:
+    """Create a party-by-ethnicity percent barplot and return the Figure.
+
+    - maps numeric and string-coded numeric values
+    - excludes unknown/refusal/not applicable ethnicity categories
+    - removes parties with max percent < 2%% across ethnic groups
+    """
+    party_col = find_column(df, ["PartyIDN", "PARTYFW", "SupParty", "Partyid1", "PartyId2", "partyfw"])
+    eth_col = find_column(df, ["RaceOri4", "raceori4", "RaceOri3_Archive", "Racelaw", "Country"])
 
     if party_col is None:
         print(f"No party column found in {year} dataset")
         return None
+    if eth_col is None:
+        print(f"No ethnicity column found in {year} dataset")
+        return None
 
-    df_copy = df.copy()
-    df_copy[party_col] = df_copy[party_col].map(PartyIDN_mapping)
+    # keep only the two relevant columns to reduce memory use
+    df_sub = df[[party_col, eth_col]].copy()
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    sns.countplot(
-        x=party_col,
-        data=df_copy,
-        order=df_copy[party_col].value_counts().index,
-        ax=ax
+    # choose mapping (allow per-year overrides)
+    party_map = PartyIDN_mapping_by_year.get(year, {})
+    df_sub[party_col] = _map_codes(df_sub[party_col], party_map)
+    df_sub[eth_col] = _map_codes(df_sub[eth_col], Ethnicity_mapping)
+
+    # drop unknowns
+    df_sub = df_sub[~df_sub[eth_col].isin(["Don't know", "Refusal", "Not applicable"])].copy()
+
+    grouped = (
+        df_sub.groupby([eth_col, party_col]).size().reset_index(name='count')
     )
-    wrap_labels(ax, 20, rotation=45, ha="right")
-    ax.set_xlabel("Party")
-    ax.set_ylabel("Count")
-    ax.set_title(f"Party Distribution in {year}")
+    if grouped.empty:
+        print(f"No data after grouping for {year}")
+        return None
+
+    grouped['pct_within_eth'] = grouped.groupby(eth_col)['count'].transform(lambda x: x / x.sum() * 100)
+
+    # parties with at least 2% in any ethnic group
+    max_pct = grouped.groupby(party_col)['pct_within_eth'].max()
+    parties_to_keep = max_pct[max_pct >= 2].sort_values(ascending=False).index.tolist()
+    if not parties_to_keep:
+        print(f"No parties with >=2% in any ethnic group for {year}")
+        return None
+
+    plot_df = grouped[grouped[party_col].isin(parties_to_keep)].copy()
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+    sns.barplot(
+        data=plot_df,
+        x=party_col,
+        y='pct_within_eth',
+        hue=eth_col,
+        ax=ax,
+        dodge=True,
+        order=parties_to_keep
+    )
+    ax.set_ylabel('Percentage within ethnic group')
+    ax.set_xlabel('Party')
+    ax.set_title(f'Party Distribution by Ethnicity in {year}')
+
+    # wrap party tick labels using explicit label list
+    wrap_labels(ax, parties_to_keep, width=20, rotation=45, ha='right')
+
+    # add total response counts per party as data labels
+    total_counts = grouped.groupby(party_col)['count'].sum()
+    max_pct_party = plot_df.groupby(party_col)['pct_within_eth'].max()
+    # determine if we need to expand y-limits to fit labels
+    label_positions = {p: max_pct_party.get(p, 0) + 1.5 for p in parties_to_keep}
+    current_ylim = ax.get_ylim()
+    needed_top = max(label_positions.values()) + 2
+    if needed_top > current_ylim[1]:
+        ax.set_ylim(top=needed_top)
+
+    for i, party in enumerate(parties_to_keep):
+        n = int(total_counts.get(party, 0))
+        ax.text(i, label_positions[party], f"n={n:,}", ha='center', va='bottom', fontsize=9, fontweight='bold')
+
+    ax.legend(title='Ethnicity', bbox_to_anchor=(1.05, 1), loc='upper left')
     fig.tight_layout()
+    fig.subplots_adjust(right=0.78)
     return fig
 
-# Define the datasets to plot
-datasets = {
-    2019: bss_19,
-    2020: bss_20,
-    2021: bss_21,
-    2022: bss_22,
-    2023: bss_23,
-    2024: bss_24,
-    2025: bss_25,
-}
 
-figs = []
-for year, df in datasets.items():
-    fig = plot_party_distribution(df, year)
-    if fig is not None:
-        figs.append(fig)
-
-plt.show()
+if __name__ == '__main__':
+    datasets = load_datasets()
+    figs = []
+    for year, df in sorted(datasets.items()):
+        f = plot_party_distribution(df, year)
+        if f is not None:
+            figs.append(f)
+    if figs:
+        plt.show()
