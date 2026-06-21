@@ -1,0 +1,89 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import textwrap
+def wrap_labels(ax, width, break_long_words=False, rotation=0, ha='center'):
+    labels = []
+    for label in ax.get_xticklabels():
+        text = label.get_text()
+        labels.append(textwrap.fill(text, width=width,
+                      break_long_words=break_long_words))
+    ax.set_xticklabels(labels, rotation=rotation, ha=ha)
+
+bss_19 = pd.read_table(r"Data\UKDA-8772-tab\tab\bsa19_for_ukda.tab")
+bss_20 = pd.read_table(r"Data\UKDA-9005-tab\tab\bsa2020_archive.tab")
+bss_21 = pd.read_table(r"Data\UKDA-9072-tab\tab\bsa21_archive.tab")
+bss_22 = pd.read_table(r"Data\UKDA-9283-tab\tab\p16974_bsa22_archive.tab")
+bss_23 = pd.read_table(r"Data\UKDA-9363-tab\tab\p18229-bsa23-archive.tab")
+bss_24 = pd.read_table(r"Data\UKDA-9478-tab\tab\p19056-bsa24-archive.tab")
+bss_25 = pd.read_table(r"Data\UKDA-9549-tab\tab\bsa_2025_survey_experiment.tab")
+
+PartyIDN_mapping = {
+	1: "Conservative",
+	2: "Labour",
+	3: "Liberal Democrat",
+	4: "Scottish National Party",
+	5: "Plaid Cymru",
+	6: "Green Party",
+	7: "UK Independence Party (UKIP)",
+	8: "British National Party (BNP)/ National Front",
+	9: "Trade Union and Socialist Coalition (TUSC)/ RESPECT/ Other socialist party",
+	10: "Brexit Party",
+	11: "Change UK - The Independent Group",
+	12: "Other party (WRITE IN)",
+	13: "Other answer (WRITE IN)",
+	14: "None",
+	20: "Refused to say",
+	98: "Don`t know",
+	99: "Refusal",
+	-2: "Skip, version off route",
+	-1: "Item not applicable"
+}
+
+def plot_party_distribution(df, year):
+    party_col = None
+    for col in df.columns:
+        if col.lower() in ['partyidn', 'partyfw']:
+            party_col = col
+            break
+
+    if party_col is None:
+        print(f"No party column found in {year} dataset")
+        return None
+
+    df_copy = df.copy()
+    df_copy[party_col] = df_copy[party_col].map(PartyIDN_mapping)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.countplot(
+        x=party_col,
+        data=df_copy,
+        order=df_copy[party_col].value_counts().index,
+        ax=ax
+    )
+    wrap_labels(ax, 20, rotation=45, ha="right")
+    ax.set_xlabel("Party")
+    ax.set_ylabel("Count")
+    ax.set_title(f"Party Distribution in {year}")
+    fig.tight_layout()
+    return fig
+
+# Define the datasets to plot
+datasets = {
+    2019: bss_19,
+    2020: bss_20,
+    2021: bss_21,
+    2022: bss_22,
+    2023: bss_23,
+    2024: bss_24,
+    2025: bss_25,
+}
+
+figs = []
+for year, df in datasets.items():
+    fig = plot_party_distribution(df, year)
+    if fig is not None:
+        figs.append(fig)
+
+plt.show()
