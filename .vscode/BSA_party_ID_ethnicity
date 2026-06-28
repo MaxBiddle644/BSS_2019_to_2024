@@ -337,8 +337,8 @@ def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
     return fig
 
 
-plot_2024_UK_belonging_distribution()
-plt.show()
+belonging_plot_2024 = plot_2024_UK_belonging_distribution()
+belonging_plot_2024.savefig(Path.cwd() / "plots" / 'UK_belonging_by_ethnicity_2024.png', dpi=300)
 
 if __name__ == '__main__':
     datasets = load_survey_data(years=[2019, 2020, 2021, 2022, 2023, 2024])
