@@ -269,23 +269,21 @@ def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]
     # wrap party tick labels using explicit label list
     wrap_labels(ax, parties_to_keep, width=20, rotation=45, ha='right')
 
-    # add total response counts per party as data labels
-    total_counts = grouped.groupby(party_col)['count'].sum()
-    max_pct_party = plot_df.groupby(party_col)['pct_within_eth'].max()
-    # determine if we need to expand y-limits to fit labels
-    label_positions = {p: max_pct_party.get(p, 0) + 1.5 for p in parties_to_keep}
-    current_ylim = ax.get_ylim()
-    needed_top = max(label_positions.values()) + 2
-    if needed_top > current_ylim[1]:
-        ax.set_ylim(top=needed_top)
-
-    for i, party in enumerate(parties_to_keep):
-        n = int(total_counts.get(party, 0))
-        ax.text(i, label_positions[party], f"n={n:,}", ha='center', va='bottom', fontsize=9, fontweight='bold')
+    # add percentage labels on each individual bar
+    for bar in ax.patches:
+        height = bar.get_height()
+        if height >= 1:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                height,
+                f'{height:.1f}%',
+                ha='center', va='bottom', fontsize=7
+            )
 
     ax.legend(title='Ethnicity', bbox_to_anchor=(1.05, 1), loc='upper left')
     fig.tight_layout()
-    fig.subplots_adjust(right=0.78)
+    fig.subplots_adjust(right=0.78, bottom=0.18)
+    fig.text(0.5, 0.01, 'Note: Percentages are calculated within each ethnic group.', ha='center', fontsize=9, style='italic')
     return fig
 
 def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
@@ -296,6 +294,12 @@ def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
     # Find columns
     belonging_col = find_column(df, ["BelongUK"])
     eth_col = find_column(df, ["RaceOri4", "raceori4", "RaceOri3_Archive", "Racelaw", "Country"])
+    if belonging_col is None:
+        print("No BelongUK column found in 2024 dataset")
+        return None
+    if eth_col is None:
+        print("No ethnicity column found in 2024 dataset")
+        return None
     # Create sub dataframe containing only coded values cols
     df_sub = df[[belonging_col, eth_col]].copy()
     # Call map_codes to map the belonging values using UK_belonging_2024_map
@@ -306,17 +310,12 @@ def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
     df_sub = df_sub.dropna(subset=[belonging_col, eth_col])
     df_sub = df_sub[~df_sub[eth_col].isin(["Don't know", "Refusal", "Not applicable"])]
     df_sub = df_sub[~df_sub[belonging_col].isin(["Don't know", "Prefer not to answer", "Not applicable"])]
-    # Map belonging responses to Yes/No
-    yes_no_map = {"A lot": "Yes", "A fair amount": "Yes", "Not very much": "No", "Not at all": "No"}
-    df_sub[belonging_col] = df_sub[belonging_col].map(yes_no_map)
-    # Drop any rows where belonging mapping produced NaN
-    df_sub = df_sub.dropna(subset=[belonging_col])
-    
+
     grouped = df_sub.groupby([eth_col, belonging_col]).size().reset_index(name='count')
 
     grouped['pct_within_eth'] = grouped.groupby(eth_col)['count'].transform(lambda x: x / x.sum() * 100)
 
-    belonging_order = ["Yes", "No"]
+    belonging_order = ["A lot", "A fair amount", "Not very much", "Not at all"]
 
     fig, ax = plt.subplots(figsize=(14, 7))
     sns.barplot(
@@ -331,9 +330,21 @@ def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
     ax.set_ylabel('Percentage within ethnic group')
     ax.set_xlabel('Sense of belonging to the UK')
     ax.set_title('UK Belonging by Ethnicity (2024)')
+
+    for bar in ax.patches:
+        height = bar.get_height()
+        if height >= 1:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                height,
+                f'{height:.1f}%',
+                ha='center', va='bottom', fontsize=8
+            )
+
     ax.legend(title='Ethnicity', bbox_to_anchor=(1.05, 1), loc='upper left')
     fig.tight_layout()
-    fig.subplots_adjust(right=0.78)
+    fig.subplots_adjust(right=0.78, bottom=0.18)
+    fig.text(0.5, 0.01, 'Note: Percentages are calculated within each ethnic group.', ha='center', fontsize=9, style='italic')
     return fig
 
 
