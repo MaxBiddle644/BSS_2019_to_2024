@@ -133,6 +133,17 @@ PARTY_IDN_MAPPING_BY_YEAR = {
     }
 }
 
+UK_belonging_2024_map = {
+    #Mapping for 2024 survey question 'To what extent, if at all, do you feel a sense of belonging to the United Kingdom?'
+        -1.0: "Not applicable",
+        1.0: "A lot",
+        2.0: "A fair amount",
+        3.0: "Not very much",
+        4.0: "Not at all",
+        8.0: "Don't know",
+        9.0: "Prefer not to answer"
+}
+
 def load_survey_data(years: list[int], expected_file_format: str = '.tab'):
     """
     Takes list of years and expected file format (.tab as default)
@@ -168,7 +179,7 @@ def find_column(df: pd.DataFrame, candidates) -> Optional[str]:
     return None
 
 
-def _map_codes(series: pd.Series, mapping: dict) -> pd.Series:
+def map_codes(series: pd.Series, mapping: dict) -> pd.Series:
     """Map numeric and string-coded numeric keys in one step."""
     full = {}
     for key, value in mapping.items():
@@ -216,8 +227,8 @@ def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]
 
     # choose mapping (allow per-year overrides)
     party_map = PARTY_IDN_MAPPING_BY_YEAR.get(year, {})
-    df_sub[party_col] = _map_codes(df_sub[party_col], party_map)
-    df_sub[eth_col] = _map_codes(df_sub[eth_col], ETHNICITY_MAPPING)
+    df_sub[party_col] = map_codes(df_sub[party_col], party_map)
+    df_sub[eth_col] = map_codes(df_sub[eth_col], ETHNICITY_MAPPING)
 
     # drop unknowns and any rows where mapping produced NaN
     df_sub = df_sub.dropna(subset=[party_col, eth_col])
@@ -277,6 +288,54 @@ def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]
     fig.subplots_adjust(right=0.78)
     return fig
 
+def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
+    """Create a UK belonging-by-ethnicity percent barplot and return the Figure."""
+    #  Load data for 2024
+    datasets = load_survey_data(years=[2024])
+    df = datasets[2024]
+    #Find columns
+    belonging_col = find_column(df, ["BelongUK"])
+    eth_col = find_column(df, ["RaceOri4", "raceori4", "RaceOri3_Archive", "Racelaw", "Country"])
+    #Create dataframe with code
+    df_sub = df[[belonging_col, eth_col]].copy()
+    df_sub[belonging_col] = map_codes(df_sub[belonging_col], UK_belonging_2024_map)
+    df_sub[eth_col] = map_codes(df_sub[eth_col], ETHNICITY_MAPPING)
+
+    df_sub = df_sub.dropna(subset=[belonging_col, eth_col])
+    df_sub = df_sub[~df_sub[eth_col].isin(["Don't know", "Refusal", "Not applicable"])]
+    df_sub = df_sub[~df_sub[belonging_col].isin(["Don't know", "Prefer not to answer", "Not applicable"])]
+
+    yes_no_map = {"A lot": "Yes", "A fair amount": "Yes", "Not very much": "No", "Not at all": "No"}
+    df_sub[belonging_col] = df_sub[belonging_col].map(yes_no_map)
+    df_sub = df_sub.dropna(subset=[belonging_col])
+
+    grouped = df_sub.groupby([eth_col, belonging_col]).size().reset_index(name='count')
+
+    grouped['pct_within_eth'] = grouped.groupby(eth_col)['count'].transform(lambda x: x / x.sum() * 100)
+
+    belonging_order = ["Yes", "No"]
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+    sns.barplot(
+        data=grouped,
+        x=belonging_col,
+        y='pct_within_eth',
+        hue=eth_col,
+        ax=ax,
+        dodge=True,
+        order=belonging_order,
+    )
+    ax.set_ylabel('Percentage within ethnic group')
+    ax.set_xlabel('Sense of belonging to the UK')
+    ax.set_title('UK Belonging by Ethnicity (2024)')
+    ax.legend(title='Ethnicity', bbox_to_anchor=(1.05, 1), loc='upper left')
+    fig.tight_layout()
+    fig.subplots_adjust(right=0.78)
+    return fig
+
+
+plot_2024_UK_belonging_distribution()
+plt.show()
 
 if __name__ == '__main__':
     datasets = load_survey_data(years=[2019, 2020, 2021, 2022, 2023, 2024])
@@ -289,3 +348,4 @@ if __name__ == '__main__':
         save_path = Path.cwd() / "plots"
         for year, fig in zip(sorted(datasets.keys()), figs):
             fig.savefig(save_path / f'party_distribution_by_ethnicity_{year}.png', dpi=300)
+
