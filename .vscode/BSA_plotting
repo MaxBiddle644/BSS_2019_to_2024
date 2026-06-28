@@ -286,4 +286,6 @@ if __name__ == '__main__':
         if f is not None:
             figs.append(f)
     if figs:
-        plt.show()
+        save_path = Path.cwd() / "plots"
+        for year, fig in zip(sorted(datasets.keys()), figs):
+            fig.savefig(save_path / f'party_distribution_by_ethnicity_{year}.png', dpi=300)
