@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import textwrap
 import pandas as pd
 import seaborn as sns
@@ -6,7 +7,7 @@ import matplotlib.pyplot as plt
 from typing import Dict, Optional
 
 # Mapping of ethnic group codes to descriptive labels
-Ethnicity_mapping = {
+ETHNICITY_MAPPING = {
     1: "Black origin",
     2: "Asian origin",
     3: "White origin",
@@ -18,7 +19,7 @@ Ethnicity_mapping = {
 }
 
 # Mapping year-specific party identification codes to descriptive labels
-PartyIDN_mapping_by_year = {
+PARTY_IDN_MAPPING_BY_YEAR = {
     2024: {
         -1.0: "Not applicable",
         1.0: "Conservative",
@@ -132,22 +133,29 @@ PartyIDN_mapping_by_year = {
     }
 }
 
+def load_survey_data(years: list[int], expected_file_format: str = '.tab'):
+    """
+    Takes list of years and expected file format (.tab as default)
+    Returns a dictionary of dataframes with year as key and dataframe as value
+    """
+    datasets = {}
+    data_folder = Path.cwd() / 'Data'
+    files = list(data_folder.rglob(f'*{expected_file_format}'))
 
-# Load data from folder into DataFrames
+    file_map = {}
+    for p in files:
+        m = re.search(r'bsa(\d{2,4})', p.name)
+        if m:
+            y = int(m.group(1))
+            if y < 100:
+                y += 2000
+            file_map[y] = p
 
-def load_datasets() -> Dict[int, pd.DataFrame]:
-    files = {
-        2019: Path('Data/UKDA-8772-tab/tab/bsa19_for_ukda.tab'),
-        2020: Path('Data/UKDA-9005-tab/tab/bsa2020_archive.tab'),
-        2021: Path('Data/UKDA-9072-tab/tab/bsa21_archive.tab'),
-        2022: Path('Data/UKDA-9283-tab/tab/p16974_bsa22_archive.tab'),
-        2023: Path('Data/UKDA-9363-tab/tab/p18229-bsa23-archive.tab'),
-        2024: Path('Data/UKDA-9478-tab/tab/p19056-bsa24-archive.tab'),
-    }
-    datasets: Dict[int, pd.DataFrame] = {}
-    for year, p in files.items():
-        if p.exists():
-            datasets[year] = pd.read_table(p)
+    for year in years:
+        if year in file_map:
+            datasets[year] = pd.read_table(file_map[year])
+        else:
+            print(f'No data file found for {year}')
     return datasets
 
 
@@ -162,23 +170,17 @@ def find_column(df: pd.DataFrame, candidates) -> Optional[str]:
 
 def _map_codes(series: pd.Series, mapping: dict) -> pd.Series:
     """Map numeric and string-coded numeric keys in one step."""
-    # include int, float and string forms of mapping keys to match different storage formats
     full = {}
     for key, value in mapping.items():
-        full[key] = value
-        # try float and int variants
         try:
             f = float(key)
             full[f] = value
-            if float(f).is_integer():
+            if f.is_integer():
                 full[int(f)] = value
                 full[str(int(f))] = value
-            # also add string form of float (e.g. '2.0')
             full[str(f)] = value
-        except Exception:
-            pass
-        # original string form
-        full[str(key)] = value
+        except (ValueError, TypeError):
+            full[str(key)] = value
     return series.map(full)
 
 
@@ -213,12 +215,13 @@ def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]
     df_sub = df[[party_col, eth_col]].copy()
 
     # choose mapping (allow per-year overrides)
-    party_map = PartyIDN_mapping_by_year.get(year, {})
+    party_map = PARTY_IDN_MAPPING_BY_YEAR.get(year, {})
     df_sub[party_col] = _map_codes(df_sub[party_col], party_map)
-    df_sub[eth_col] = _map_codes(df_sub[eth_col], Ethnicity_mapping)
+    df_sub[eth_col] = _map_codes(df_sub[eth_col], ETHNICITY_MAPPING)
 
-    # drop unknowns
-    df_sub = df_sub[~df_sub[eth_col].isin(["Don't know", "Refusal", "Not applicable"])].copy()
+    # drop unknowns and any rows where mapping produced NaN
+    df_sub = df_sub.dropna(subset=[party_col, eth_col])
+    df_sub = df_sub[~df_sub[eth_col].isin(["Don't know", "Refusal", "Not applicable"])]
 
     grouped = (
         df_sub.groupby([eth_col, party_col]).size().reset_index(name='count')
@@ -276,7 +279,7 @@ def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]
 
 
 if __name__ == '__main__':
-    datasets = load_datasets()
+    datasets = load_survey_data(years=[2019, 2020, 2021, 2022, 2023, 2024])
     figs = []
     for year, df in sorted(datasets.items()):
         f = plot_party_distribution(df, year)
