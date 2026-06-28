@@ -290,25 +290,27 @@ def plot_party_distribution(df: pd.DataFrame, year: int) -> Optional[plt.Figure]
 
 def plot_2024_UK_belonging_distribution() -> Optional[plt.Figure]:
     """Create a UK belonging-by-ethnicity percent barplot and return the Figure."""
-    #  Load data for 2024
+    # Load data for 2024
     datasets = load_survey_data(years=[2024])
     df = datasets[2024]
-    #Find columns
+    # Find columns
     belonging_col = find_column(df, ["BelongUK"])
     eth_col = find_column(df, ["RaceOri4", "raceori4", "RaceOri3_Archive", "Racelaw", "Country"])
-    #Create dataframe with code
+    # Create dataframe with coded values
     df_sub = df[[belonging_col, eth_col]].copy()
     df_sub[belonging_col] = map_codes(df_sub[belonging_col], UK_belonging_2024_map)
+    # Map uncoded and coded values
     df_sub[eth_col] = map_codes(df_sub[eth_col], ETHNICITY_MAPPING)
-
+    # Drop unknowns and any rows where mapping produced NaN
     df_sub = df_sub.dropna(subset=[belonging_col, eth_col])
     df_sub = df_sub[~df_sub[eth_col].isin(["Don't know", "Refusal", "Not applicable"])]
     df_sub = df_sub[~df_sub[belonging_col].isin(["Don't know", "Prefer not to answer", "Not applicable"])]
-
+    # Map belonging responses to Yes/No
     yes_no_map = {"A lot": "Yes", "A fair amount": "Yes", "Not very much": "No", "Not at all": "No"}
     df_sub[belonging_col] = df_sub[belonging_col].map(yes_no_map)
+    # Drop any rows where belonging mapping produced NaN
     df_sub = df_sub.dropna(subset=[belonging_col])
-
+    
     grouped = df_sub.groupby([eth_col, belonging_col]).size().reset_index(name='count')
 
     grouped['pct_within_eth'] = grouped.groupby(eth_col)['count'].transform(lambda x: x / x.sum() * 100)
